@@ -29,7 +29,7 @@ model = BertForQuestionAnswering.from_pretrained(MODEL_NAME).to(device)
 # Load SQuAD dataset (from json file)
 def load_dataset(file_path):
     with open(file_path, "r") as file:
-        squad_data = json.load(file)["data"][:1]  # TODO: REMOVE
+        squad_data = json.load(file)["data"]
     contexts = []
     questions = []
     answers = []
@@ -138,10 +138,10 @@ training_args = TrainingArguments(
     output_dir="./models",
     learning_rate=2e-5,
     bf16=True,
-    per_device_train_batch_size=32,
-    per_device_eval_batch_size=32,
+    per_device_train_batch_size=64,
+    per_device_eval_batch_size=64,
     evaluation_strategy="epoch",
-    num_train_epochs=2,
+    num_train_epochs=1,
     weight_decay=0.01,
     logging_dir="./logs",
     logging_steps=100,
@@ -172,14 +172,3 @@ qa_pipeline = pipeline(
 def answer_question(question: str, context: str):
     return qa_pipeline(question=question, context=context)
 
-
-# Basic CLI for getting questions and answers
-if __name__ == "__main__":
-    context = input("Please enter a context: \n")
-    while True:
-        question = input("Please enter a question: \n")
-        if question == "exit()":
-            print("Goodbye!")
-            break
-        result = answer_question(question, context)
-        print(f"Answer: {result['answer']}")
