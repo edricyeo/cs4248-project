@@ -1,5 +1,5 @@
 import json
-
+import optuna
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
@@ -23,7 +23,9 @@ device = torch.device("cuda")
 tokenizer = AutoTokenizer.from_pretrained(
     MODEL_NAME
 )  # use AutoTokenizer, lest return_offset errs
-model = BertForQuestionAnswering.from_pretrained(MODEL_NAME).to(device)
+
+def model_init():
+    return BertForQuestionAnswering.from_pretrained(MODEL_NAME)
 
 
 # Load SQuAD dataset (from json file)
@@ -129,28 +131,35 @@ flattend_dataset = load_dataset("data/train-v1.1.json")
     questions_test,
     answers_train,
     answers_test,
-) = train_test_split(*flattend_dataset, test_size=0.2, random_state=SEED)
+) = train_test_split(*flattend_dataset, test_size=0.1, random_state=SEED)
 train_dataset = SquadDataset(contexts_train, questions_train, answers_train, tokenizer)
 test_dataset = SquadDataset(contexts_test, questions_test, answers_test, tokenizer)
 data_collator = DefaultDataCollator()  # padding already done
 
 training_args = TrainingArguments(
-    output_dir="./models",
-    learning_rate=2e-5,
+    #output_dir="./models",
+    output_dir="./hp_models",
+    #learning_rate=3e-5,
     bf16=True,
-    per_device_train_batch_size=64,
-    per_device_eval_batch_size=64,
-    evaluation_strategy="epoch",
-    num_train_epochs=1,
-    weight_decay=0.01,
+    #per_device_train_batch_size=128,
+    per_device_eval_batch_size=128,
+    eval_strategy="epoch",
+    #num_train_epochs=10,
+    #weight_decay=0.01,
     logging_dir="./logs",
     logging_steps=100,
-    save_total_limit=2,
+    save_total_limit=1,
     report_to="tensorboard",
+    no_cuda=False,
+    metric_for_best_model="eval_loss",
+    load_best_model_at_end=True,
+    greater_is_better=False,
+    save_strategy="epoch"
 )
 
 trainer = Trainer(
-    model=model,
+    model=None,
+    model_init=model_init,
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=test_dataset,
@@ -158,17 +167,26 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
-# Train the model
-trainer.train()
+def optuna_hp_space(trial):
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
+        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
+        "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.2),
+        "warmup_steps": trial.suggest_int("warmup_steps", 0, 500),
+        "num_train_epochs": trial.suggest_int("num_train_epochs", 1,5),
+    }
 
-model.save_pretrained("./fine-tuned-bert-qa")
+#def compute_objective(metrics) -> list[float]:
+#    return metrics["eval_loss"]
 
-# Pipeline and function to answer questions
-qa_pipeline = pipeline(
-    "question-answering", model=model, tokenizer=tokenizer, device=device
+best_trials = trainer.hyperparameter_search(
+    direction=["minimize", "maximize"],
+    backend="optuna",
+    hp_space=optuna_hp_space,
+    n_trials=10,
+    #compute_objective=compute_objective,
 )
 
+trainer.train()
 
-def answer_question(question: str, context: str):
-    return qa_pipeline(question=question, context=context)
-
+trainer.save_model(output_dir="./best_model")
