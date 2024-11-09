@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from transformers import (
     AutoTokenizer,
     BertForQuestionAnswering,
+    XLNetForQuestionAnswering,  
     DefaultDataCollator,
     Trainer,
     TrainingArguments,
@@ -14,7 +15,8 @@ from transformers import (
 )
 
 SEED = 42
-MODEL_NAME = "bert-base-cased"
+MODEL_NAME = "xlnet/xlnet-large-cased"
+#MODEL_NAME = "bert-base-cased"
 BERT_MAX_LENGTH = 512
 set_seed(SEED)
 assert torch.cuda.is_available()
@@ -25,7 +27,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 )  # use AutoTokenizer, lest return_offset errs
 
 def model_init():
-    return BertForQuestionAnswering.from_pretrained(MODEL_NAME)
+    return XLNetForQuestionAnswering.from_pretrained(MODEL_NAME)
 
 
 # Load SQuAD dataset (from json file)
@@ -141,14 +143,15 @@ training_args = TrainingArguments(
     output_dir="./hp_models",
     #learning_rate=3e-5,
     bf16=True,
-    #per_device_train_batch_size=128,
-    per_device_eval_batch_size=128,
+    per_device_train_batch_size=32,
+    per_device_eval_batch_size=32,
+    gradient_accumulation_steps=2,
     eval_strategy="epoch",
     #num_train_epochs=10,
     #weight_decay=0.01,
     logging_dir="./logs",
     logging_steps=100,
-    save_total_limit=1,
+    save_total_limit=2,
     report_to="tensorboard",
     no_cuda=False,
     metric_for_best_model="eval_loss",
@@ -170,23 +173,21 @@ trainer = Trainer(
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
+        #"per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
         "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.2),
         "warmup_steps": trial.suggest_int("warmup_steps", 0, 500),
-        "num_train_epochs": trial.suggest_int("num_train_epochs", 1,5),
+        "num_train_epochs": trial.suggest_int("num_train_epochs", 2,5),
     }
 
 #def compute_objective(metrics) -> list[float]:
 #    return metrics["eval_loss"]
 
 best_trials = trainer.hyperparameter_search(
-    direction=["minimize", "maximize"],
+    direction="minimize",
     backend="optuna",
     hp_space=optuna_hp_space,
-    n_trials=10,
+    n_trials=5,
     #compute_objective=compute_objective,
 )
 
 trainer.train()
-
-trainer.save_model(output_dir="./best_model")

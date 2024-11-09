@@ -1,13 +1,13 @@
 import torch
-from transformers import BertTokenizer, BertForQuestionAnswering, pipeline, set_seed
+from transformers import AutoTokenizer, XLNetForQuestionAnswering, BertTokenizer, BertForQuestionAnswering, pipeline, set_seed
 import json
 from tqdm import tqdm
 
 set_seed(42)
 # Load trained model and tokenizer
-model_path = "./models/checkpoint-1095"  # Replace with your saved model path
-tokenizer = BertTokenizer.from_pretrained(model_path)
-model = BertForQuestionAnswering.from_pretrained(model_path)
+model_path = "./hp_models/run-0/checkpoint-9856"  # Replace with your saved model path
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+model = XLNetForQuestionAnswering.from_pretrained(model_path)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 qa_pipeline = pipeline("question-answering", model=model_path, tokenizer=tokenizer, device=device)
 
