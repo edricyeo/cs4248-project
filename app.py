@@ -1,37 +1,44 @@
 import json
+import sys
+from datetime import datetime
+import random
 import optuna
+import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
+#from sklearn.model_selection import train_test_split
+#from evaluate import load
 from torch.utils.data import Dataset
 from transformers import (
     AutoTokenizer,
     BertForQuestionAnswering,
-    XLNetForQuestionAnswering,  
     DefaultDataCollator,
     Trainer,
     TrainingArguments,
+    XLNetForQuestionAnsweringSimple,
     pipeline,
     set_seed,
 )
 
 SEED = 42
 MODEL_NAME = "xlnet/xlnet-large-cased"
-#MODEL_NAME = "bert-base-cased"
+# MODEL_NAME = "bert-base-cased"
 BERT_MAX_LENGTH = 512
 set_seed(SEED)
+random.seed(SEED)
 assert torch.cuda.is_available()
 device = torch.device("cuda")
 # Load pre-trained BERT tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME
+    MODEL_NAME,
 )  # use AutoTokenizer, lest return_offset errs
 
+
 def model_init():
-    return XLNetForQuestionAnswering.from_pretrained(MODEL_NAME)
+    return XLNetForQuestionAnsweringSimple.from_pretrained(MODEL_NAME)
 
 
 # Load SQuAD dataset (from json file)
-def load_dataset(file_path):
+def load_dataset(file_path, is_mini=False):
     with open(file_path, "r") as file:
         squad_data = json.load(file)["data"]
     contexts = []
@@ -47,6 +54,16 @@ def load_dataset(file_path):
                 contexts.append(_context)
                 questions.append(_question)
                 answers.append(_answer)
+    samples = list(zip(contexts, questions, answers))
+    random.shuffle(samples)
+    contexts, questions, answers = zip(*samples)
+    contexts = list(contexts)
+    questions = list(questions)
+    answers = list(answers)
+    
+    if is_mini:
+        mini_size = 1000
+        return contexts[:mini_size], questions[:mini_size], answers[:mini_size]
     return contexts, questions, answers
 
 
@@ -59,7 +76,7 @@ class SquadDataset(Dataset):
         self.encodings = self._preprocess()
 
     def _preprocess(self):
-        encodings = self.tokenizer(
+        encodings = self.tokenizer(  # TODO: Maybe excessive padding tokens?
             self.questions,
             self.contexts,
             max_length=BERT_MAX_LENGTH,  # TODO: Maybe shrink
@@ -125,39 +142,30 @@ class SquadDataset(Dataset):
         }
 
 
-flattend_dataset = load_dataset("data/train-v1.1.json")
-(
-    contexts_train,
-    contexts_test,
-    questions_train,
-    questions_test,
-    answers_train,
-    answers_test,
-) = train_test_split(*flattend_dataset, test_size=0.1, random_state=SEED)
+contexts_train, questions_train, answers_train = load_dataset("data/train-v1.1.json")
+contexts_test, questions_test, answers_test = load_dataset("data/dev-v1.1.json", is_mini=True)
 train_dataset = SquadDataset(contexts_train, questions_train, answers_train, tokenizer)
 test_dataset = SquadDataset(contexts_test, questions_test, answers_test, tokenizer)
 data_collator = DefaultDataCollator()  # padding already done
 
 training_args = TrainingArguments(
-    #output_dir="./models",
-    output_dir="./hp_models",
-    #learning_rate=3e-5,
+    # output_dir="./models",
+    output_dir=f"./hp_models/{datetime.now().strftime('%d-%m_%H-%M')}",
+    learning_rate=4.457e-5,
     bf16=True,
-    per_device_train_batch_size=32,
+    per_device_train_batch_size=48,
     per_device_eval_batch_size=32,
-    gradient_accumulation_steps=2,
-    eval_strategy="epoch",
-    #num_train_epochs=10,
-    #weight_decay=0.01,
-    logging_dir="./logs",
+    gradient_accumulation_steps=4,
+    num_train_epochs=2,
+    weight_decay=0.150,
+    warmup_steps=178,
+    logging_dir=f"./logs/{datetime.now().strftime('%d-%m_%H-%M')}",
     logging_steps=100,
     save_total_limit=2,
     report_to="tensorboard",
-    no_cuda=False,
-    metric_for_best_model="eval_loss",
-    load_best_model_at_end=True,
-    greater_is_better=False,
-    save_strategy="epoch"
+    eval_strategy="epoch",
+    save_strategy="epoch",
+    no_cuda=False
 )
 
 trainer = Trainer(
@@ -170,24 +178,24 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
+
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        #"per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
+        # "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
         "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.2),
         "warmup_steps": trial.suggest_int("warmup_steps", 0, 500),
-        "num_train_epochs": trial.suggest_int("num_train_epochs", 2,5),
+        #"num_train_epochs": trial.suggest_int("num_train_epochs", 1,5),
     }
 
-#def compute_objective(metrics) -> list[float]:
-#    return metrics["eval_loss"]
 
-best_trials = trainer.hyperparameter_search(
-    direction="minimize",
-    backend="optuna",
-    hp_space=optuna_hp_space,
-    n_trials=5,
-    #compute_objective=compute_objective,
-)
+#best_trials = trainer.hyperparameter_search(
+#    direction="minimize",
+#    backend="optuna",
+#    hp_space=optuna_hp_space,
+#    n_trials=1,
+#)
+
 
 trainer.train()
+

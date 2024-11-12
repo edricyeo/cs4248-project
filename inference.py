@@ -1,15 +1,18 @@
 import torch
-from transformers import AutoTokenizer, XLNetForQuestionAnswering, BertTokenizer, BertForQuestionAnswering, pipeline, set_seed
+from transformers import AutoTokenizer, AutoModelForQuestionAnswering, XLNetForQuestionAnswering, BertTokenizer, BertForQuestionAnswering, pipeline, set_seed
 import json
 from tqdm import tqdm
 
 set_seed(42)
 # Load trained model and tokenizer
-model_path = "./hp_models/run-0/checkpoint-9856"  # Replace with your saved model path
+model_path = "./hp_models/12-11_23-46/checkpoint-912"
 tokenizer = AutoTokenizer.from_pretrained(model_path)
-model = XLNetForQuestionAnswering.from_pretrained(model_path)
+
+model = AutoModelForQuestionAnswering.from_pretrained(model_path)
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-qa_pipeline = pipeline("question-answering", model=model_path, tokenizer=tokenizer, device=device)
+MODEL_MAX_LENGTH = 512 
+qa_pipeline = pipeline("question-answering", model=model, tokenizer=tokenizer, MODEL_MAX_LENGTH=384, device=device)
 
 # Load the test dataset
 def load_test_dataset(file_path):
@@ -39,10 +42,7 @@ def predict_answers_with_pipeline(question_ids, contexts, questions, qa_pipeline
 
     for qid, context, question in tqdm(zip(question_ids, contexts, questions), total=len(question_ids)):
         # Use the pipeline to get the answer
-        result = qa_pipeline({
-            "question": question,
-            "context": context
-        })
+        result = qa_pipeline(question=question, context=context)
 
         # Append the result with question ID and answer
         results[qid] = result["answer"]
