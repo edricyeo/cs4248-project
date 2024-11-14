@@ -1,3 +1,7 @@
+### Python Scripts
+`app.py` - Training script with hyper-parameter search.
+`inference.py` - Running inference on trained models to get answer files saved in `answers` folder.
+
 ### Instructions to run training and inference.
 
 1) Create a conda environment with the given `environment.yml`
