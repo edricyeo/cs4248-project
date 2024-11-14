@@ -6,7 +6,7 @@ import optuna
 import pandas as pd
 import torch
 #from sklearn.model_selection import train_test_split
-#from evaluate import load
+import evaluate
 from torch.utils.data import Dataset
 from transformers import (
     AutoTokenizer,
@@ -18,6 +18,7 @@ from transformers import (
     pipeline,
     set_seed,
 )
+import numpy as np
 
 SEED = 42
 MODEL_NAME = "xlnet/xlnet-large-cased"
@@ -148,17 +149,68 @@ train_dataset = SquadDataset(contexts_train, questions_train, answers_train, tok
 test_dataset = SquadDataset(contexts_test, questions_test, answers_test, tokenizer)
 data_collator = DefaultDataCollator()  # padding already done
 
+
+#metric = evaluate.load("squad")
+#def compute_metrics(start_logits, end_logits, features, examples):
+#    n_best_logits = 5
+#    example_to_features = collections.defaultdict(list)
+#    for idx, feature in enumerate(features):
+#        example_to_features[feature["example_id"]].append(idx)
+#
+#    predicted_answers = []
+#    for example in tqdm(examples):
+#        example_id = example["id"]
+#        context = example["context"]
+#        answers = []
+#
+#        # Loop through all features associated with that example
+#        for feature_index in example_to_features[example_id]:
+#            start_logit = start_logits[feature_index]
+#            end_logit = end_logits[feature_index]
+#            offsets = features[feature_index]["offset_mapping"]
+#
+#            start_indexes = np.argsort(start_logit)[-1 : -n_best_logits - 1 : -1].tolist()
+#            end_indexes = np.argsort(end_logit)[-1 : -n_best_logits - 1 : -1].tolist()
+#            for start_index in start_indexes:
+#                for end_index in end_indexes:
+#                    # Skip answers that are not fully in the context
+#                    if offsets[start_index] is None or offsets[end_index] is None:
+#                        continue
+#                    # Skip answers with a length that is either < 0 or > max_answer_length
+#                    if (
+#                        end_index < start_index
+#                    ):
+#                        continue
+#
+#                    answer = {
+#                        "text": context[offsets[start_index][0] : offsets[end_index][1]],
+#                        "logit_score": start_logit[start_index] + end_logit[end_index],
+#                    }
+#                    answers.append(answer)
+#
+#        # Select the answer with the best score
+#        if len(answers) > 0:
+#            best_answer = max(answers, key=lambda x: x["logit_score"])
+#            predicted_answers.append(
+#                {"id": example_id, "prediction_text": best_answer["text"]}
+#            )
+#        else:
+#            predicted_answers.append({"id": example_id, "prediction_text": ""})
+#
+#    theoretical_answers = [{"id": ex["id"], "answers": ex["answers"]} for ex in examples]
+#    return metric.compute(predictions=predicted_answers, references=theoretical_answers)
+
 training_args = TrainingArguments(
     # output_dir="./models",
     output_dir=f"./hp_models/{datetime.now().strftime('%d-%m_%H-%M')}",
-    learning_rate=4.457e-5,
+    #learning_rate=4.457e-5,
     bf16=True,
-    per_device_train_batch_size=48,
+    per_device_train_batch_size=32,
     per_device_eval_batch_size=32,
-    gradient_accumulation_steps=4,
-    num_train_epochs=2,
-    weight_decay=0.150,
-    warmup_steps=178,
+    #gradient_accumulation_steps=4,
+    #num_train_epochs=1,
+    #weight_decay=0.150,
+    #warmup_steps=178,
     logging_dir=f"./logs/{datetime.now().strftime('%d-%m_%H-%M')}",
     logging_steps=100,
     save_total_limit=2,
@@ -176,6 +228,7 @@ trainer = Trainer(
     eval_dataset=test_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
+    #compute_metrics=compute_metrics
 )
 
 
@@ -183,19 +236,19 @@ def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
         # "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
+        "gradient_accumulation_steps": trial.suggest_categorical("per_device_train_batch_size", [1, 2, 4]),
         "weight_decay": trial.suggest_float("weight_decay", 0.0, 0.2),
         "warmup_steps": trial.suggest_int("warmup_steps", 0, 500),
-        #"num_train_epochs": trial.suggest_int("num_train_epochs", 1,5),
+        "num_train_epochs": trial.suggest_int("num_train_epochs", 2,4),
     }
 
 
-#best_trials = trainer.hyperparameter_search(
-#    direction="minimize",
-#    backend="optuna",
-#    hp_space=optuna_hp_space,
-#    n_trials=1,
-#)
+best_trials = trainer.hyperparameter_search(
+    direction="minimize",
+    backend="optuna",
+    hp_space=optuna_hp_space,
+    n_trials=10,
+)
 
-
-trainer.train()
+#trainer.train()
 

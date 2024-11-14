@@ -5,15 +5,18 @@ from tqdm import tqdm
 
 set_seed(42)
 # Load trained model and tokenizer
-model_path = "./hp_models/12-11_23-46/checkpoint-912"
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-model = AutoModelForQuestionAnswering.from_pretrained(model_path)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-MODEL_MAX_LENGTH = 512 
-qa_pipeline = pipeline("question-answering", model=model, tokenizer=tokenizer, MODEL_MAX_LENGTH=384, device=device)
-
+#model_path = "./hp_models/12-11_23-46/checkpoint-912"
+paths = [
+"./hp_models/13-11_16-10/run-0/checkpoint-1368",
+"./hp_models/13-11_16-10/run-1/checkpoint-684",
+"./hp_models/13-11_21-16/run-0/checkpoint-1369",
+"./hp_models/13-11_21-16/run-0/checkpoint-2052",
+"./hp_models/13-11_21-16/run-1/checkpoint-4107",
+"./hp_models/13-11_21-16/run-1/checkpoint-5476",
+"./hp_models/13-11_21-16/run-2/checkpoint-5476",
+"./hp_models/13-11_21-16/run-3/checkpoint-2738",
+"./hp_models/13-11_21-16/run-4/checkpoint-2736"
+]
 # Load the test dataset
 def load_test_dataset(file_path):
     with open(file_path, "r") as file:
@@ -49,10 +52,17 @@ def predict_answers_with_pipeline(question_ids, contexts, questions, qa_pipeline
 
     return results
 
-# Collect the answers using the pipeline
-answers = predict_answers_with_pipeline(test_question_ids, test_contexts, test_questions, qa_pipeline)
+for i, model_path in enumerate(paths):
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForQuestionAnswering.from_pretrained(model_path)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    MODEL_MAX_LENGTH = 512 
+    qa_pipeline = pipeline("question-answering", model=model, tokenizer=tokenizer, max_length=MODEL_MAX_LENGTH, device=device)
 
-with open("answers.json", "w") as f:
-    json.dump(answers, f, indent=4)
+    answers = predict_answers_with_pipeline(test_question_ids, test_contexts, test_questions, qa_pipeline)
+    
+    
+    with open(f"answers/trial{i}.json", "w") as f:
+        json.dump(answers, f, indent=4)
 
 print("Inference complete.")
