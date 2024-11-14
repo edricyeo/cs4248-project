@@ -11,14 +11,12 @@
 source ~/.bashrc
 
 conda activate nlp
-#conda activate trl2
 
-# TODO: Activate your conda environment
 # TODO: Insert HF_TOKEN if necessary
 
 nvidia-smi
 
-#python ~/cs4248-project/app.py
+python ~/cs4248-project/app.py
 #exit 0
 
 python ~/cs4248-project/inference.py
