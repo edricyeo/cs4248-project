@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:a100-80:1
 #SBATCH --mem=32gb
 #SBATCH --time=15:59:00
-#SBATCH --output=/home/e/e0725981/logs/%j-slurm.out
+#SBATCH --output=logs/%j-slurm.out
 
 
 source ~/.bashrc
