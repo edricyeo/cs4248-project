@@ -1,0 +1,18 @@
+name: nlp
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - scipy=1.7.0
+  - pillow
+  - transformers
+  - pytorch
+  - datasets=2.10.0
+  - evaluate
+  - optuna
+  - numpy
+  - pandas
+  - tqdm
+  - accelerate
+  - tensorboard
